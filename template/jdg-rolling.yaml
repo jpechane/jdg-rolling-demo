@@ -291,9 +291,9 @@ objects:
     name: datagrid-app-hotrod
   spec:
     ports:
-    - port: 11333
+    - port: 11222
       protocol: TCP
-      targetPort: 11333
+      targetPort: 11222
     selector:
       deploymentConfig: datagrid-app
 - apiVersion: v1

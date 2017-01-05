@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<groupId>com.redhat.xpaas</groupId>
+	<artifactId>demo-jdg</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<packaging>jar</packaging>
+
+	<name>demo-jdg</name>
+	<description>Spring Boot application generating load to JDG</description>
+
+	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+		<maven.compiler.source>1.8</maven.compiler.source>
+		<maven.compiler.target>1.8</maven.compiler.target>
+		<version.infinispan.starter>1.0.0.Alpha1</version.infinispan.starter>
+		<version.infinispan>6.3.1.Final-redhat-1</version.infinispan>
+		<fabric8.version>2.2.176</fabric8.version>
+		<springboot-version>1.4.3.RELEASE</springboot-version>
+		<tomcat.version>8.0.36</tomcat.version>
+
+		<fabric8.maven.plugin.version>3.1.92</fabric8.maven.plugin.version>
+		<docker.maven.plugin.version>0.19.0</docker.maven.plugin.version>
+		<maven-surefire-plugin.version>2.18.1</maven-surefire-plugin.version>
+
+		<docker.push.registry>docker-registry.usersys.redhat.com</docker.push.registry>
+		<docker.base.image>registry.access.redhat.com/jboss-fuse-6-tech-preview/fis-java-openshift:2.0</docker.base.image>
+		<docker.namespace>jpechane</docker.namespace>
+	</properties>
+
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-starter-parent</artifactId>
+				<version>${springboot-version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>io.fabric8</groupId>
+				<artifactId>fabric8-project-bom-with-platform-deps</artifactId>
+				<version>${fabric8.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>org.infinispan</groupId>
+				<artifactId>infinispan-client-hotrod</artifactId>
+				<version>${version.infinispan}</version>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
+	<dependencies>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-tomcat</artifactId>
+		</dependency>
+
+		<!-- Tomcat -->
+		<dependency>
+			<groupId>org.apache.tomcat.embed</groupId>
+			<artifactId>tomcat-embed-core</artifactId>
+			<version>${tomcat.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.tomcat.embed</groupId>
+			<artifactId>tomcat-embed-el</artifactId>
+			<version>${tomcat.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.tomcat.embed</groupId>
+			<artifactId>tomcat-embed-websocket</artifactId>
+			<version>${tomcat.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.tomcat</groupId>
+			<artifactId>tomcat-juli</artifactId>
+			<version>${tomcat.version}</version>
+		</dependency>
+
+		<!-- Testing -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>org.jboss.arquillian.junit</groupId>
+			<artifactId>arquillian-junit-container</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>io.fabric8</groupId>
+			<artifactId>fabric8-arquillian</artifactId>
+			<scope>test</scope>
+			<exclusions>
+				<exclusion>
+					<groupId>org.apache.httpcomponents</groupId>
+					<artifactId>httpclient-osgi</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+
+		<dependency>
+			<groupId>org.infinispan</groupId>
+			<artifactId>inifinispan-spring-boot-starter</artifactId>
+			<version>${version.infinispan.starter}</version>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+				<version>${springboot-version}</version>
+			</plugin>
+			<plugin>
+				<groupId>io.fabric8</groupId>
+				<artifactId>docker-maven-plugin</artifactId>
+				<version>${docker.maven.plugin.version}</version>
+				<configuration>
+					<images>
+						<image>
+							<name>${docker.namespace}/${project.artifactId}</name>
+							<build>
+								<from>${docker.base.image}</from>
+								<ports>
+									<port>8080</port>
+									<port>8787</port>
+								</ports>
+								<tags>
+									<tag>latest</tag>
+									<tag>${project.version}</tag>
+								</tags>
+								<assembly>
+									<targetDir>/deployments</targetDir>
+									<descriptorRef>artifact</descriptorRef>
+								</assembly>
+							</build>
+						</image>
+					</images>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+	<profiles>
+		<profile>
+			<id>app-build</id>
+			<build>
+				<defaultGoal>clean package spring-boot:repackage docker:build</defaultGoal>
+			</build>
+		</profile>
+		<profile>
+			<id>app-deploy</id>
+			<build>
+				<defaultGoal>clean package spring-boot:repackage docker:build docker:push</defaultGoal>
+			</build>
+		</profile>
+	</profiles>
+</project>

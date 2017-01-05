@@ -1,0 +1,344 @@
+apiVersion: v1
+kind: Template
+metadata:
+  name: jdg-rolling-demo
+parameters:
+- name: PROJECT_NAMESPACE
+  description: Namespace in which the application is created
+  required: true
+- name: DATAGRID_REPLICA_COUNT
+  description: Number of JDG replicas to run
+  value: "3"
+  required: true
+- name: CLIENT_REPLICA_COUNT
+  description: Number of client app replicas to run
+  value: "2"
+  required: true
+objects:
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    name: datagrid65-openshift
+  spec:
+    tags: 
+    - from: 
+        kind: DockerImage 
+        name: registry.access.redhat.com/jboss-datagrid-6/datagrid65-openshift:1.2
+      name: "1.2"
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    name: datagrid65-probe
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    name: fis-java-openshift
+  spec:
+    tags: 
+    - from: 
+        kind: DockerImage 
+        name: registry.access.redhat.com/jboss-fuse-6-tech-preview/fis-java-openshift:2.0
+      name: "2.0"
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    name: jdg-client-app
+- apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    labels:
+      build: datagrid65-probe
+    name: datagrid65-probe
+  spec:
+    output:
+      to:
+        kind: ImageStreamTag
+        name: datagrid65-probe:latest
+    source:
+      contextDir: jdg-probe
+      git:
+        uri: https://github.com/jpechane/jdg-rolling-demo
+      type: Git
+    strategy:
+      dockerStrategy:
+        from:
+          kind: ImageStreamTag
+          name: datagrid65-openshift:1.2
+          namespace: ${PROJECT_NAMESPACE}
+      type: Docker
+    triggers:
+    - type: ConfigChange
+    - imageChange: {}
+      type: ImageChange
+- apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    labels:
+      build: jdg-client-app
+    name: jdg-client-app
+  spec:
+    output:
+      to:
+        kind: ImageStreamTag
+        name: jdg-client-app:latest
+    source:
+      contextDir: jdg-client-app
+      git:
+        uri: https://github.com/jpechane/jdg-rolling-demo
+      type: Git
+    strategy:
+      sourceStrategy:
+        env:
+        - name: MAVEN_ARGS
+          value: -e -Popenshift
+        from:
+          kind: ImageStreamTag
+          name: fis-java-openshift:2.0
+          namespace: ${PROJECT_NAMESPACE}
+        incremental: true
+      type: Source
+    triggers:
+    - type: ConfigChange
+    - imageChange: {}
+      type: ImageChange
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    labels:
+      application: datagrid-app
+    name: datagrid-app
+  spec:
+    replicas: ${DATAGRID_REPLICA_COUNT}
+    selector:
+      deploymentConfig: datagrid-app
+    strategy:
+      recreateParams:
+        timeoutSeconds: 600
+      rollingParams:
+        intervalSeconds: 1
+        maxSurge: 33%
+        maxUnavailable: 33%
+        timeoutSeconds: 600
+        updatePeriodSeconds: 1
+      type: Rolling
+    template:
+      metadata:
+        labels:
+          application: datagrid-app
+          deploymentConfig: datagrid-app
+        name: datagrid-app
+      spec:
+        containers:
+        - env:
+          - name: USERNAME
+          - name: PASSWORD
+          - name: OPENSHIFT_KUBE_PING_LABELS
+            value: application=datagrid-app
+          - name: OPENSHIFT_KUBE_PING_NAMESPACE
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+          - name: INFINISPAN_CONNECTORS
+            value: hotrod,memcached,rest
+          - name: CACHE_NAMES
+            value: default,test
+          - name: ENCRYPTION_REQUIRE_SSL_CLIENT_AUTH
+          - name: HOTROD_SERVICE_NAME
+            value: datagrid-app-hotrod
+          - name: MEMCACHED_CACHE
+            value: default
+          - name: REST_SECURITY_DOMAIN
+          - name: JGROUPS_CLUSTER_PASSWORD
+            value: FpivQHxI
+          - name: DEFAULT_CACHE_START
+            value: EAGER
+          - name: DEFAULT_CACHE_TYPE
+            value: distributed
+          - name: READINESS_CACHE
+            value: test(repl_sync)
+          - name: TEST_CACHE_START
+            value: EAGER
+          - name: TEST_CACHE_TYPE
+            value: replicated
+          image: datagrid65-probe
+          imagePullPolicy: Always
+          livenessProbe:
+            exec:
+              command:
+              - /bin/bash
+              - -c
+              - /opt/datagrid/bin/livenessProbe.sh
+            failureThreshold: 3
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: datagrid-app
+          ports:
+          - containerPort: 8778
+            name: jolokia
+            protocol: TCP
+          - containerPort: 8080
+            name: http
+            protocol: TCP
+          - containerPort: 8888
+            name: ping
+            protocol: TCP
+          - containerPort: 11211
+            name: memcached
+            protocol: TCP
+          - containerPort: 11222
+            name: hotrod
+            protocol: TCP
+          readinessProbe:
+            exec:
+              command:
+              - /bin/bash
+              - -c
+              - /opt/datagrid/bin/improvedReadinessProbe.sh
+            failureThreshold: 3
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+        serviceAccountName: jdg-service-account
+        terminationGracePeriodSeconds: 60
+    triggers:
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - datagrid-app
+        from:
+          kind: ImageStreamTag
+          name: datagrid65-probe:latest
+          namespace: ${PROJECT_NAMESPACE}
+      type: ImageChange
+    - type: ConfigChange
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    labels:
+      application: jdg-client-app
+    name: jdg-client-app
+  spec:
+    replicas: ${CLIENT_REPLICA_COUNT}
+    selector:
+      application: jdg-client-app
+      deploymentconfig: jdg-client-app
+    strategy:
+      rollingParams:
+        intervalSeconds: 1
+        maxSurge: 25%
+        maxUnavailable: 25%
+        timeoutSeconds: 600
+        updatePeriodSeconds: 1
+      type: Rolling
+    template:
+      metadata:
+        labels:
+          application: jdg-client-app
+          deploymentconfig: jdg-client-app
+      spec:
+        containers:
+        - env:
+          - name: INFINISPAN_CACHE
+            value: test
+          image: jdg-client-app
+          imagePullPolicy: Always
+          name: jdg-client-app
+          ports:
+          - containerPort: 8778
+            protocol: TCP
+          - containerPort: 8080
+            protocol: TCP
+        terminationGracePeriodSeconds: 30
+    triggers:
+    - type: ConfigChange
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - jdg-client-app
+        from:
+          kind: ImageStreamTag
+          name: jdg-client-app:latest
+          namespace: ${PROJECT_NAMESPACE}
+      type: ImageChange
+- apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    name: jdg-service-account
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      description: The web server's HTTP port.
+    labels:
+      application: datagrid-app
+    name: datagrid-app
+  spec:
+    ports:
+    - port: 8080
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      deploymentConfig: datagrid-app
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      description: Hot Rod service for clustered applications.
+    labels:
+      application: datagrid-app
+    name: datagrid-app-hotrod
+  spec:
+    ports:
+    - port: 11333
+      protocol: TCP
+      targetPort: 11333
+    selector:
+      deploymentConfig: datagrid-app
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      description: Memcached service for clustered applications.
+    labels:
+      application: datagrid-app
+    name: datagrid-app-memcached
+  spec:
+    ports:
+    - port: 11211
+      protocol: TCP
+      targetPort: 11211
+    selector:
+      deploymentConfig: datagrid-app
+- apiVersion: v1
+  kind: Service
+  metadata:
+    labels:
+      application: jdg-client-app
+    name: jdg-client-app
+  spec:
+    ports:
+    - name: 8778-tcp
+      port: 8778
+      protocol: TCP
+      targetPort: 8778
+    - name: 8080-tcp
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      application: jdg-client-app
+      deploymentconfig: jdg-client-app
+- apiVersion: v1
+  kind: Route
+  metadata:
+    labels:
+      application: jdg-client-app
+    name: jdg-client-app
+  spec:
+    port:
+      targetPort: 8080-tcp
+    to:
+      kind: Service
+      name: jdg-client-app

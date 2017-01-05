@@ -167,5 +167,40 @@
 				<defaultGoal>clean package spring-boot:repackage docker:build docker:push</defaultGoal>
 			</build>
 		</profile>
+		<profile>
+			<id>openshift</id>
+			<repositories>
+				<repository>
+					<id>red-hat-ga-repository</id>
+					<name>Red Hat GA Maven Repository</name>
+					<url>https://maven.repository.redhat.com/ga/</url>
+					<layout>default</layout>
+					<releases>
+						<enabled>true</enabled>
+						<updatePolicy>never</updatePolicy>
+					</releases>
+					<snapshots>
+						<enabled>true</enabled>
+						<updatePolicy>never</updatePolicy>
+					</snapshots>
+				</repository>
+			</repositories>
+			<pluginRepositories>
+				<pluginRepository>
+					<id>red-hat-ga-repository</id>
+					<name>Red Hat GA Maven Repository</name>
+					<url>https://maven.repository.redhat.com/ga/</url>
+					<releases>
+						<enabled>true</enabled>
+					</releases>
+					<snapshots>
+						<enabled>true</enabled>
+					</snapshots>
+				</pluginRepository>
+			</pluginRepositories>
+			<build>
+				<defaultGoal>clean package spring-boot:repackage</defaultGoal>
+			</build>
+		</profile>
 	</profiles>
 </project>

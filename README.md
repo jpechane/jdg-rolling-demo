@@ -47,7 +47,7 @@ curl -v 'http://jdg-client-app-<host>/bulk/write?from=100000&count=25000'
 curl -v 'http://jdg-client-app-<host>/bulk/read?from=100000&count=25000'
 curl -v 'http://jdg-client-app-<host>/bulk/read?from=0&count=25000'
 ```
-### Dying cache instances
+### Cache redeployment
 * Start writing to cache from two client application instances
 ```shell
 curl -v 'http://jdg-client-app-<host>/bulk/write?from=200000&count=25000'
